@@ -1,0 +1,15 @@
+USE order_db;
+
+CREATE TABLE IF NOT EXISTS orders (
+    id VARCHAR(36) PRIMARY KEY,
+    sku VARCHAR(50) NOT NULL,
+    quantity INT NOT NULL CHECK (quantity > 0),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE USER IF NOT EXISTS 'order_app'@'%' IDENTIFIED BY 'order_password';
+GRANT SELECT, INSERT ON order_db.orders TO 'order_app'@'%';
+
+CREATE USER IF NOT EXISTS 'debezium'@'%' IDENTIFIED BY 'dbz_password';
+GRANT SELECT, RELOAD, SHOW DATABASES, REPLICATION SLAVE, REPLICATION CLIENT
+  ON *.* TO 'debezium'@'%';

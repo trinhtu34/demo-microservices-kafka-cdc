@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: order-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3307/order_db}
+    username: ${SPRING_DATASOURCE_USERNAME:order_app}
+    password: ${SPRING_DATASOURCE_PASSWORD:order_password}
+    driver-class-name: org.mariadb.jdbc.Driver
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: never
+    include-stacktrace: never

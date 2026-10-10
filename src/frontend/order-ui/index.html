@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f3f4ee">
+    <meta name="description" content="Tạo order và quan sát luồng MariaDB CDC qua Debezium và Kafka.">
+    <title>Order CDC Demo</title>
+    <link rel="stylesheet" href="./css/app.css">
+    <script src="./js/app.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main-content">Bỏ qua điều hướng</a>
+
+<div class="page-shell">
+    <header class="topbar">
+        <a class="brand" href="/" aria-label="Order CDC Demo, trang chủ">
+            <span class="brand__mark" aria-hidden="true">CDC</span>
+            <span class="brand__name">Order flow</span>
+        </a>
+        <div class="environment"><span class="environment__dot" aria-hidden="true"></span>LOCAL DEMO</div>
+    </header>
+
+    <main id="main-content">
+        <section class="intro" aria-labelledby="page-title">
+            <p class="eyebrow"><span class="eyebrow__line" aria-hidden="true"></span>KAFKA · CHANGE DATA CAPTURE</p>
+            <h1 id="page-title">Tạo một đơn hàng.<br><span>Theo dấu thay đổi.</span></h1>
+            <p class="intro__copy">
+                Order Service lưu đơn vào MariaDB. Debezium đọc binlog và phát CDC event lên Kafka theo cách bất đồng bộ.
+            </p>
+        </section>
+
+        <section class="flow" aria-label="Luồng CDC của một order">
+            <ol class="flow__list">
+                <li class="flow__step">
+                    <span class="flow__number">01</span>
+                    <div><strong>Order Service</strong><code>POST /api/orders</code></div>
+                </li>
+                <li class="flow__step">
+                    <span class="flow__number">02</span>
+                    <div><strong>MariaDB</strong><code>order_db · binlog</code></div>
+                </li>
+                <li class="flow__step">
+                    <span class="flow__number">03</span>
+                    <div><strong>Debezium</strong><code>order CDC topic</code></div>
+                </li>
+                <li class="flow__step">
+                    <span class="flow__number">04</span>
+                    <div><strong>Inventory</strong><code>reserve + inventory DB</code></div>
+                </li>
+                <li class="flow__step">
+                    <span class="flow__number">05</span>
+                    <div><strong>Debezium</strong><code>reservation CDC topic</code></div>
+                </li>
+                <li class="flow__step flow__step--last">
+                    <span class="flow__number">06</span>
+                    <div><strong>Notification</strong><code>DB + SSE tới UI</code></div>
+                </li>
+            </ol>
+        </section>
+
+        <section class="workspace" aria-label="Tạo order và thông tin luồng CDC">
+            <div class="form-panel">
+                <div class="section-heading">
+                    <div>
+                        <p class="section-heading__eyebrow">ORDER SERVICE</p>
+                        <h2>Tạo order mới</h2>
+                    </div>
+                    <span class="method-badge">POST</span>
+                </div>
+                <p class="form-intro">Gửi request kèm Idempotency-Key để retry an toàn. Mã order được tạo sau database commit.</p>
+
+                <form id="order-form" class="order-form">
+                    <div class="field">
+                        <label for="sku">SKU</label>
+                        <input
+                            id="sku"
+                            name="sku"
+                            type="text"
+                            list="sample-skus"
+                            maxlength="50"
+                            autocomplete="off"
+                            spellcheck="false"
+                            placeholder="Ví dụ: IPHONE-15"
+                            aria-describedby="sku-hint"
+                            required>
+                        <datalist id="sample-skus">
+                            <option value="IPHONE-15"></option>
+                            <option value="MACBOOK-M3"></option>
+                            <option value="AIRPODS-PRO"></option>
+                        </datalist>
+                        <p id="sku-hint" class="field-hint">Tối đa 50 ký tự. Có thể nhập SKU khác.</p>
+                    </div>
+
+                    <div class="field field--quantity">
+                        <label for="quantity">Số lượng</label>
+                        <input
+                            id="quantity"
+                            name="quantity"
+                            type="number"
+                            min="1"
+                            step="1"
+                            value="1"
+                            inputmode="numeric"
+                            required>
+                    </div>
+
+                    <button id="submit-button" class="submit-button" type="submit">
+                        <span class="submit-button__label">Tạo order</span>
+                        <span class="submit-button__arrow" aria-hidden="true">↗</span>
+                    </button>
+                </form>
+
+                <section id="result-panel" class="result-panel" role="status" aria-live="polite" tabindex="-1" hidden>
+                    <p id="result-eyebrow" class="result-panel__eyebrow"></p>
+                    <h3 id="result-title"></h3>
+                    <p id="result-message" class="result-panel__message"></p>
+                    <div id="order-id-panel" class="order-id" hidden>
+                        <span>ORDER ID</span>
+                        <code id="order-id"></code>
+                    </div>
+                </section>
+            </div>
+
+            <aside class="explanation notification-panel" aria-labelledby="notification-title">
+                <p class="explanation__eyebrow">INVENTORY → NOTIFICATION</p>
+                <div class="notification-panel__heading">
+                    <h2 id="notification-title">Kết quả giữ hàng</h2>
+                    <div id="notification-connection" class="notification-connection" data-state="connecting" role="status" aria-live="polite">
+                        <span class="notification-connection__dot" aria-hidden="true"></span>
+                        <span id="notification-connection-label">Đang kết nối…</span>
+                    </div>
+                </div>
+                <p class="notification-panel__copy">
+                    Inventory ghi kết quả vào MariaDB. Debezium phát CDC; Notification lưu vào DB riêng rồi đẩy tới đây qua SSE.
+                </p>
+                <ul id="notification-list" class="notification-list" aria-label="Thông báo xử lý order"></ul>
+                <p id="notification-empty" class="notification-empty" role="status">
+                    Chưa có kết quả giữ hàng. Tạo một order để bắt đầu luồng CDC.
+                </p>
+            </aside>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <span>LOCAL KAFKA CDC DEMO</span>
+        <span>MariaDB <i aria-hidden="true">/</i> Debezium <i aria-hidden="true">/</i> Kafka <i aria-hidden="true">/</i> SSE</span>
+    </footer>
+</div>
+</body>
+</html>

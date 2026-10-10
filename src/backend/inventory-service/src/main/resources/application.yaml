@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: inventory-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3308/inventory_db}
+    username: ${SPRING_DATASOURCE_USERNAME:inventory_app}
+    password: ${SPRING_DATASOURCE_PASSWORD:inventory_password}
+    driver-class-name: org.mariadb.jdbc.Driver
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: inventory-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+    listener:
+      ack-mode: manual_immediate
+
+demo:
+  kafka:
+    order-topic: ${DEMO_KAFKA_ORDER_TOPIC:order_cdc.order_db.orders}
+
+logging:
+  level:
+    com.demo.inventory: INFO

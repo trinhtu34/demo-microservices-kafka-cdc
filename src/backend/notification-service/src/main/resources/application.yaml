@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: notification-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mariadb://localhost:3309/notification_db}
+    username: ${SPRING_DATASOURCE_USERNAME:notification_app}
+    password: ${SPRING_DATASOURCE_PASSWORD:notification_password}
+    driver-class-name: org.mariadb.jdbc.Driver
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: notification-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+    listener:
+      ack-mode: manual_immediate
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: never
+    include-stacktrace: never
+
+demo:
+  kafka:
+    inventory-topic: ${DEMO_KAFKA_INVENTORY_TOPIC:inventory_cdc.inventory_db.reservations}
+
+logging:
+  level:
+    com.demo.notification: INFO
