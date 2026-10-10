@@ -14,7 +14,7 @@ public class NotificationQueryService {
         this.repository = repository;
     }
 
-    public List<NotificationResponse> recent(int limit) {
-        return repository.findRecent(limit);
+    public List<NotificationResponse> recent(String customerId, int limit) {
+        return repository.findRecent(customerId, limit);
     }
 }

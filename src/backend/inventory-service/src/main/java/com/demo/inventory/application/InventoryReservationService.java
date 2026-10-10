@@ -19,18 +19,19 @@ public class InventoryReservationService {
     @Transactional
     public boolean reserve(OrderCdcEvent order) {
         int inserted = jdbcTemplate.update("""
-                INSERT IGNORE INTO reservations (order_id, sku, quantity, status, reason)
-                VALUES (?, ?, ?, 'PROCESSING', NULL)
-                """, order.orderId(), order.sku(), order.quantity());
+                INSERT IGNORE INTO reservations (order_id, customer_id, sku, quantity, status, reason)
+                VALUES (?, ?, ?, ?, 'PROCESSING', NULL)
+                """, order.orderId(), order.customerId(), order.sku(), order.quantity());
         if (inserted == 0) {
             List<ExistingReservation> existing = jdbcTemplate.query("""
-                    SELECT sku, quantity, status
+                    SELECT customer_id, sku, quantity, status
                     FROM reservations
                     WHERE order_id = ?
                     """, (resultSet, rowNumber) -> new ExistingReservation(
                     resultSet.getString("sku"),
                     resultSet.getInt("quantity"),
-                    resultSet.getString("status")), order.orderId());
+                    resultSet.getString("status"),
+                    resultSet.getString("customer_id")), order.orderId());
 
             ExistingReservation reservation = existing.stream().findFirst()
                     .orElseThrow(() -> new IllegalStateException("Reservation conflict row was not found"));
@@ -86,10 +87,12 @@ public class InventoryReservationService {
                 """, topic, partition, offset, key, value, message);
     }
 
-    private record ExistingReservation(String sku, int quantity, String status) {
+    private record ExistingReservation(String sku, int quantity, String status, String customerId) {
 
         private boolean matches(OrderCdcEvent order) {
-            return sku.equals(order.sku()) && quantity == order.quantity();
+            return customerId.equals(order.customerId())
+                    && sku.equals(order.sku())
+                    && quantity == order.quantity();
         }
     }
 }

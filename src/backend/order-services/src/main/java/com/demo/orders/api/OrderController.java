@@ -25,7 +25,7 @@ public class OrderController {
             @RequestHeader("Idempotency-Key") java.util.UUID idempotencyKey,
             @Valid @RequestBody CreateOrderRequest request) {
         var result = orderService.createOrder(
-                idempotencyKey.toString(), request.sku().strip(), request.quantity());
+                idempotencyKey.toString(), request.customerId(), request.sku().strip(), request.quantity());
         HttpStatus status = result.created() ? HttpStatus.CREATED : HttpStatus.OK;
         return ResponseEntity.status(status).body(new OrderCreatedResponse(result.orderId()));
     }

@@ -2,6 +2,7 @@ USE order_db;
 
 CREATE TABLE IF NOT EXISTS orders (
     id VARCHAR(36) PRIMARY KEY,
+    customer_id VARCHAR(16) NOT NULL DEFAULT 'USER_A',
     sku VARCHAR(50) NOT NULL,
     quantity INT NOT NULL CHECK (quantity > 0),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP

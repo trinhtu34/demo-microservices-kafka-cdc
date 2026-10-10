@@ -10,11 +10,11 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @Component
 public class NotificationStream {
 
-    private final CopyOnWriteArrayList<SseEmitter> clients = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<Subscriber> clients = new CopyOnWriteArrayList<>();
 
-    public SseEmitter subscribe() {
+    public SseEmitter subscribe(String customerId) {
         SseEmitter emitter = new SseEmitter(0L);
-        clients.add(emitter);
+        clients.add(new Subscriber(customerId, emitter));
         emitter.onCompletion(() -> remove(emitter));
         emitter.onTimeout(() -> remove(emitter));
         emitter.onError(exception -> remove(emitter));
@@ -26,20 +26,26 @@ public class NotificationStream {
     }
 
     public void publish(NotificationResponse notification) {
-        for (SseEmitter client : clients) {
+        for (Subscriber subscriber : clients) {
+            if (!subscriber.customerId().equals(notification.customerId())) {
+                continue;
+            }
             try {
-                client.send(SseEmitter.event()
+                subscriber.emitter().send(SseEmitter.event()
                         .id(Long.toString(notification.id()))
                         .name("notification")
                         .data(notification));
             } catch (IOException | IllegalStateException exception) {
-                remove(client);
-                client.completeWithError(exception);
+                remove(subscriber.emitter());
+                subscriber.emitter().completeWithError(exception);
             }
         }
     }
 
     public void remove(SseEmitter emitter) {
-        clients.remove(emitter);
+        clients.removeIf(subscriber -> subscriber.emitter() == emitter);
+    }
+
+    private record Subscriber(String customerId, SseEmitter emitter) {
     }
 }

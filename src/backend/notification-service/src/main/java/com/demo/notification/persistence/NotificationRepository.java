@@ -20,14 +20,14 @@ public class NotificationRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public void insertIfAbsent(String orderId, String sku, int quantity,
+    public void insertIfAbsent(String orderId, String customerId, String sku, int quantity,
                                String status, String reason,
                                String topic, int partition, long offset) {
         jdbcTemplate.update("""
                 INSERT IGNORE INTO notifications
-                    (order_id, sku, quantity, status, reason, source_topic, source_partition, source_offset)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, orderId, sku, quantity, status, reason, topic, partition, offset);
+                    (order_id, customer_id, sku, quantity, status, reason, source_topic, source_partition, source_offset)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, orderId, customerId, sku, quantity, status, reason, topic, partition, offset);
     }
 
     public void insertErrorIfAbsent(String topic, int partition, long offset,
@@ -45,23 +45,26 @@ public class NotificationRepository {
 
     public Optional<NotificationResponse> findByOrderId(String orderId) {
         List<NotificationResponse> rows = jdbcTemplate.query("""
-                SELECT id, order_id, sku, quantity, status, reason, created_at
+                SELECT id, order_id, customer_id, sku, quantity, status, reason, created_at
                 FROM notifications WHERE order_id = ?
                 """, ROW_MAPPER, orderId);
         return rows.stream().findFirst();
     }
 
-    public List<NotificationResponse> findRecent(int limit) {
+    public List<NotificationResponse> findRecent(String customerId, int limit) {
         return jdbcTemplate.query("""
-                SELECT id, order_id, sku, quantity, status, reason, created_at
-                FROM notifications ORDER BY id DESC LIMIT ?
-                """, ROW_MAPPER, limit);
+                SELECT id, order_id, customer_id, sku, quantity, status, reason, created_at
+                FROM notifications
+                WHERE customer_id = ?
+                ORDER BY id DESC LIMIT ?
+                """, ROW_MAPPER, customerId, limit);
     }
 
     private static NotificationResponse mapRow(ResultSet resultSet, int rowNumber) throws SQLException {
         return new NotificationResponse(
                 resultSet.getLong("id"),
                 resultSet.getString("order_id"),
+                resultSet.getString("customer_id"),
                 resultSet.getString("sku"),
                 resultSet.getInt("quantity"),
                 resultSet.getString("status"),

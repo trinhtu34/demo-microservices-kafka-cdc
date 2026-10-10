@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS products (
 
 CREATE TABLE IF NOT EXISTS reservations (
     order_id VARCHAR(36) PRIMARY KEY,
+    customer_id VARCHAR(16) NOT NULL DEFAULT 'USER_A',
     sku VARCHAR(50) NOT NULL,
     quantity INT NOT NULL,
     status VARCHAR(20) NOT NULL

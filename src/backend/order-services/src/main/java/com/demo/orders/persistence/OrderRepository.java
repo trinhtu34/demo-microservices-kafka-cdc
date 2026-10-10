@@ -14,16 +14,19 @@ public class OrderRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public int insertIfAbsent(String id, String sku, int quantity) {
+    public int insertIfAbsent(String id, String customerId, String sku, int quantity) {
         return jdbcTemplate.update(
-                "INSERT IGNORE INTO orders (id, sku, quantity) VALUES (?, ?, ?)", id, sku, quantity);
+                "INSERT IGNORE INTO orders (id, customer_id, sku, quantity) VALUES (?, ?, ?, ?)",
+                id, customerId, sku, quantity);
     }
 
     public Optional<ExistingOrder> findById(String id) {
         List<ExistingOrder> rows = jdbcTemplate.query(
-                "SELECT sku, quantity FROM orders WHERE id = ?",
+                "SELECT customer_id, sku, quantity FROM orders WHERE id = ?",
                 (resultSet, rowNumber) -> new ExistingOrder(
-                        resultSet.getString("sku"), resultSet.getInt("quantity")),
+                        resultSet.getString("customer_id"),
+                        resultSet.getString("sku"),
+                        resultSet.getInt("quantity")),
                 id);
         return rows.stream().findFirst();
     }

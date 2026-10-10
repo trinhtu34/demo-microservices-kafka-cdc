@@ -7,19 +7,39 @@ const resultTitle = document.querySelector("#result-title");
 const resultMessage = document.querySelector("#result-message");
 const orderIdPanel = document.querySelector("#order-id-panel");
 const orderId = document.querySelector("#order-id");
+const customerInput = document.querySelector("#customer-id");
 const skuInput = document.querySelector("#sku");
 const quantityInput = document.querySelector("#quantity");
 const notificationConnection = document.querySelector("#notification-connection");
 const notificationConnectionLabel = document.querySelector("#notification-connection-label");
 const notificationList = document.querySelector("#notification-list");
 const notificationEmpty = document.querySelector("#notification-empty");
+const flowConnection = document.querySelector("#flow-connection");
+const flowConnectionLabel = document.querySelector("#flow-connection-label");
+const flowRuntimeStatus = document.querySelector("#flow-runtime-status");
+const flowOrderDetails = document.querySelector("#flow-order-details");
+const flowOrderId = document.querySelector("#flow-order-id");
+const flowEvents = document.querySelector("#flow-events");
+const flowEventsEmpty = document.querySelector("#flow-events-empty");
+const flowStepNames = ["order", "order-database", "order-cdc", "inventory", "reservation-cdc", "notification"];
+const flowSteps = new Map([...document.querySelectorAll("[data-flow-step]")]
+    .map((step) => [step.dataset.flowStep, step]));
 const notificationsById = new Map();
 const pendingOrderStorageKey = "order-cdc-demo.pending-order";
 let pendingOrderAttempt = readPendingOrderAttempt();
+let notificationEventSource = null;
+let flowEventSource = null;
+let activeFlowOrderId = null;
+let flowProgressIndex = -1;
+const seenFlowEvents = new Set();
 
 if (pendingOrderAttempt) {
+    customerInput.value = pendingOrderAttempt.customerId;
+    customerInput.disabled = true;
     skuInput.value = pendingOrderAttempt.sku;
     quantityInput.value = String(pendingOrderAttempt.quantity);
+    beginOrderFlow(pendingOrderAttempt.idempotencyKey);
+    flowRuntimeStatus.textContent = "Request trước chưa nhận được phản hồi. Đang tiếp tục quan sát CDC cho order này.";
 }
 
 function readPendingOrderAttempt() {
@@ -30,7 +50,10 @@ function readPendingOrderAttempt() {
             && typeof saved.sku === "string"
             && Number.isInteger(saved.quantity)
             && saved.quantity > 0) {
-            return saved;
+            const customerId = saved.customerId ?? "USER_A";
+            if (customerId === "USER_A" || customerId === "USER_B") {
+                return { ...saved, customerId };
+            }
         }
     } catch {
         // Keep the form usable if session storage is unavailable.
@@ -40,6 +63,7 @@ function readPendingOrderAttempt() {
 
 function savePendingOrderAttempt(attempt) {
     pendingOrderAttempt = attempt;
+    customerInput.disabled = true;
     try {
         sessionStorage.setItem(pendingOrderStorageKey, JSON.stringify(attempt));
     } catch {
@@ -49,6 +73,7 @@ function savePendingOrderAttempt(attempt) {
 
 function clearPendingOrderAttempt() {
     pendingOrderAttempt = null;
+    customerInput.disabled = false;
     try {
         sessionStorage.removeItem(pendingOrderStorageKey);
     } catch {
@@ -70,12 +95,14 @@ function createIdempotencyKey() {
 function getPendingOrderAttempt(request) {
     if (pendingOrderAttempt) {
         const samePayload = pendingOrderAttempt.sku === request.sku
+            && pendingOrderAttempt.customerId === request.customerId
             && pendingOrderAttempt.quantity === request.quantity;
         return samePayload ? pendingOrderAttempt : null;
     }
 
     const attempt = {
         idempotencyKey: createIdempotencyKey(),
+        customerId: request.customerId,
         sku: request.sku,
         quantity: request.quantity,
     };
@@ -111,6 +138,135 @@ function apiErrorMessage(body) {
 function setNotificationConnection(state, message) {
     notificationConnection.dataset.state = state;
     notificationConnectionLabel.textContent = message;
+}
+
+function setFlowConnection(state, message) {
+    flowConnection.dataset.state = state;
+    flowConnectionLabel.textContent = message;
+}
+
+function renderFlowSteps() {
+    for (const [index, name] of flowStepNames.entries()) {
+        const step = flowSteps.get(name);
+        if (!step) {
+            continue;
+        }
+
+        let state = "waiting";
+        let label = "Đang chờ";
+        if (!activeFlowOrderId) {
+            state = "idle";
+            label = "Chưa bắt đầu";
+        } else if (index <= flowProgressIndex) {
+            state = "complete";
+            label = "Đã quan sát";
+        } else if (index === flowProgressIndex + 1) {
+            state = "active";
+            label = index === 0 ? "Đang gửi order" : "Đang chờ dữ liệu";
+        }
+
+        step.dataset.state = state;
+        step.querySelector(".flow__step-status").textContent = label;
+    }
+}
+
+function beginOrderFlow(orderId) {
+    activeFlowOrderId = orderId;
+    flowProgressIndex = -1;
+    seenFlowEvents.clear();
+    flowEvents.replaceChildren();
+    flowEventsEmpty.hidden = false;
+    flowOrderDetails.hidden = false;
+    flowOrderId.textContent = orderId;
+    flowRuntimeStatus.textContent = "Đang gửi order; các mốc tiếp theo sẽ được đánh dấu khi quan sát thấy CDC event.";
+    renderFlowSteps();
+}
+
+function addFlowEvent(key, titleText, detailText, timestamp, rank) {
+    if (seenFlowEvents.has(key)) {
+        return;
+    }
+    seenFlowEvents.add(key);
+
+    const item = document.createElement("li");
+    item.className = "flow__event";
+    item.dataset.rank = String(rank);
+
+    const title = document.createElement("p");
+    title.className = "flow__event-title";
+    title.textContent = `${titleText} · ${flowTime(timestamp)}`;
+
+    const detail = document.createElement("p");
+    detail.className = "flow__event-detail";
+    detail.textContent = detailText;
+
+    item.append(title, detail);
+    const nextEvent = [...flowEvents.children].find((eventItem) => Number(eventItem.dataset.rank) > rank);
+    flowEvents.insertBefore(item, nextEvent ?? null);
+    while (flowEvents.children.length > 8) {
+        flowEvents.firstElementChild.remove();
+    }
+    flowEventsEmpty.hidden = flowEvents.children.length > 0;
+}
+
+function flowTime(value) {
+    const date = value ? new Date(value) : new Date();
+    return Number.isNaN(date.getTime()) ? new Date().toLocaleTimeString("vi-VN") : date.toLocaleTimeString("vi-VN");
+}
+
+function advanceFlow(completedIndex, message) {
+    const previousProgressIndex = flowProgressIndex;
+    flowProgressIndex = Math.max(flowProgressIndex, completedIndex);
+    if (completedIndex >= previousProgressIndex) {
+        flowRuntimeStatus.textContent = message;
+    }
+    renderFlowSteps();
+}
+
+function handleFlowProgress(progress) {
+    if (!progress
+        || progress.customerId !== customerInput.value
+        || progress.orderId !== activeFlowOrderId
+        || typeof progress.milestone !== "string") {
+        return;
+    }
+
+    const detail = `${progress.topic} · partition ${progress.partition} · offset ${progress.offset}`;
+    const eventKey = `${progress.milestone}:${progress.topic}:${progress.partition}:${progress.offset}`;
+    if (progress.milestone === "ORDER_CDC_CAPTURED") {
+        addFlowEvent(eventKey, "Debezium event đã tới Kafka", detail, progress.observedAt, 2);
+        advanceFlow(2, "Đã quan sát order CDC event trong Kafka. Inventory đang xử lý order bất đồng bộ.");
+    } else if (progress.milestone === "RESERVATION_CDC_CAPTURED") {
+        addFlowEvent(eventKey, "Inventory result đã tới Kafka", detail, progress.observedAt, 4);
+        advanceFlow(4, "Đã quan sát reservation CDC event. Notification đang lưu kết quả.");
+    }
+}
+
+function markOrderSaved(orderId, httpStatus) {
+    if (orderId !== activeFlowOrderId) {
+        beginOrderFlow(orderId);
+    }
+    addFlowEvent("order-saved", "Order Service xác nhận đã lưu", `POST /api/orders · HTTP ${httpStatus}`, new Date(), 1);
+    advanceFlow(1, "Order đã commit vào MariaDB. Đang chờ Debezium phát hiện thay đổi trong binlog.");
+}
+
+function markNotificationDelivered(notification) {
+    if (!notification || notification.orderId !== activeFlowOrderId) {
+        return;
+    }
+    addFlowEvent("notification-delivered", "Notification đã lưu và gửi SSE", `${notification.status} · ${notification.sku} × ${notification.quantity}`, notification.createdAt, 5);
+    advanceFlow(5, "Hoàn tất: order đã đi qua CDC, Inventory và Notification tới giao diện.");
+}
+
+function rejectOrderFlow(message) {
+    activeFlowOrderId = null;
+    flowRuntimeStatus.textContent = message;
+    renderFlowSteps();
+    const orderStep = flowSteps.get("order");
+    if (orderStep) {
+        orderStep.dataset.state = "error";
+        orderStep.querySelector(".flow__step-status").textContent = "Request bị từ chối";
+    }
 }
 
 function notificationStatus(status) {
@@ -150,7 +306,7 @@ function createNotificationItem(notification) {
 
     const order = document.createElement("code");
     order.className = "notification-item__order";
-    order.textContent = `ORDER ${notification.orderId}`;
+    order.textContent = `${notification.customerId} · ORDER ${notification.orderId}`;
 
     item.append(heading, order);
 
@@ -175,8 +331,12 @@ function createNotificationItem(notification) {
 
 function mergeNotifications(items) {
     for (const item of items) {
-        if (item && item.id !== undefined && typeof item.orderId === "string") {
+        if (item
+            && item.id !== undefined
+            && item.customerId === customerInput.value
+            && typeof item.orderId === "string") {
             notificationsById.set(String(item.id), item);
+            markNotificationDelivered(item);
         }
     }
 
@@ -202,26 +362,59 @@ function parseEventData(event) {
 }
 
 function connectNotificationStream() {
+    notificationEventSource?.close();
     if (window.location.protocol === "file:") {
-        setNotificationConnection("error", "Mở giao diện tại http://localhost:8081");
+        setNotificationConnection("error", "Mở giao diện qua cổng được publish bởi Docker Compose");
         return;
     }
 
-    const streamUrl = `${window.location.protocol}//${window.location.hostname}:8090/api/notifications/stream`;
-    const eventSource = new EventSource(streamUrl);
+    const customerId = encodeURIComponent(customerInput.value);
+    const streamUrl = `${window.location.protocol}//${window.location.hostname}:8090/api/notifications/stream?customerId=${customerId}`;
+    notificationEventSource = new EventSource(streamUrl);
 
-    eventSource.onopen = () => setNotificationConnection("connected", "Đang nhận realtime");
-    eventSource.onerror = () => setNotificationConnection("error", "Mất kết nối · đang thử lại");
-    eventSource.addEventListener("snapshot", (event) => {
+    notificationEventSource.onopen = () => setNotificationConnection("connected", "Đang nhận realtime");
+    notificationEventSource.onerror = () => setNotificationConnection("error", "Mất kết nối · đang thử lại");
+    notificationEventSource.addEventListener("snapshot", (event) => {
         const snapshot = parseEventData(event);
         if (Array.isArray(snapshot)) {
             mergeNotifications(snapshot);
         }
     });
-    eventSource.addEventListener("notification", (event) => {
+    notificationEventSource.addEventListener("notification", (event) => {
         const notification = parseEventData(event);
         if (notification) {
             mergeNotifications([notification]);
+        }
+    });
+}
+
+function connectFlowStream() {
+    flowEventSource?.close();
+    if (window.location.protocol === "file:") {
+        setFlowConnection("error", "Mở giao diện qua cổng được publish bởi Docker Compose");
+        return;
+    }
+
+    const customerId = encodeURIComponent(customerInput.value);
+    const streamUrl = `${window.location.protocol}//${window.location.hostname}:8090/api/flow/stream?customerId=${customerId}`;
+    flowEventSource = new EventSource(streamUrl);
+    flowEventSource.onopen = () => setFlowConnection("connected", "Flow stream đang hoạt động");
+    flowEventSource.onerror = () => setFlowConnection("error", "Mất flow stream · đang thử lại");
+    flowEventSource.addEventListener("snapshot", (event) => {
+        try {
+            const snapshot = JSON.parse(event.data);
+            if (Array.isArray(snapshot)) {
+                snapshot.forEach(handleFlowProgress);
+            }
+        } catch {
+            setFlowConnection("error", "Flow snapshot không hợp lệ");
+        }
+    });
+    flowEventSource.addEventListener("flow", (event) => {
+        try {
+            handleFlowProgress(JSON.parse(event.data));
+        } catch {
+            setFlowConnection("error", "Flow event không hợp lệ");
         }
     });
 }
@@ -234,7 +427,7 @@ form.addEventListener("submit", async (event) => {
             state: "error",
             eyebrow: "TRANG ĐANG MỞ TỪ FILE",
             title: "Mở giao diện qua Order Service",
-            message: "File local chỉ hiển thị giao diện. Truy cập http://localhost:8081/ để gửi order tới API.",
+            message: "File local chỉ hiển thị giao diện. Hãy mở UI qua host port được Docker Compose publish.",
         });
         return;
     }
@@ -245,6 +438,7 @@ form.addEventListener("submit", async (event) => {
 
     const formData = new FormData(form);
     const request = {
+        customerId: String(formData.get("customerId")),
         sku: String(formData.get("sku")).trim(),
         quantity: Number(formData.get("quantity")),
     };
@@ -254,7 +448,7 @@ form.addEventListener("submit", async (event) => {
             state: "error",
             eyebrow: "CÒN REQUEST CHƯA XÁC NHẬN",
             title: "Gửi lại order đang chờ trước",
-            message: "Giữ nguyên SKU và số lượng để retry cùng Idempotency-Key. Sau khi nhận kết quả, bạn có thể tạo order mới.",
+            message: "Giữ nguyên user, SKU và số lượng để retry cùng Idempotency-Key. Sau khi nhận kết quả, bạn có thể tạo order mới.",
         });
         return;
     }
@@ -262,6 +456,7 @@ form.addEventListener("submit", async (event) => {
     submitButton.disabled = true;
     submitLabel.textContent = "Đang lưu order…";
     form.setAttribute("aria-busy", "true");
+    beginOrderFlow(attempt.idempotencyKey);
     showResult({
         state: "loading",
         eyebrow: "ORDER SERVICE",
@@ -283,6 +478,9 @@ form.addEventListener("submit", async (event) => {
         if (!response.ok) {
             if (response.status < 500) {
                 clearPendingOrderAttempt();
+                rejectOrderFlow("Order Service từ chối request; không có CDC milestone mới được xác nhận.");
+            } else {
+                flowRuntimeStatus.textContent = "Order Service chưa xác nhận được kết quả. Tiếp tục theo dõi CDC theo order ID để phát hiện trường hợp commit nhưng mất phản hồi.";
             }
             showResult({
                 state: "error",
@@ -298,6 +496,7 @@ form.addEventListener("submit", async (event) => {
         }
 
         clearPendingOrderAttempt();
+        markOrderSaved(body.id, response.status);
         showResult({
             state: "success",
             eyebrow: `HTTP ${response.status} · ORDER ĐÃ LƯU`,
@@ -308,6 +507,7 @@ form.addEventListener("submit", async (event) => {
             id: body.id,
         });
     } catch (error) {
+        flowRuntimeStatus.textContent = "Chưa nhận được HTTP response. Luồng CDC vẫn đang được theo dõi theo order ID này.";
         showResult({
             state: "error",
             eyebrow: "KHÔNG KẾT NỐI ĐƯỢC",
@@ -323,6 +523,23 @@ form.addEventListener("submit", async (event) => {
     }
 });
 
+customerInput.addEventListener("change", () => {
+    notificationsById.clear();
+    notificationList.replaceChildren();
+    notificationEmpty.hidden = false;
+    activeFlowOrderId = null;
+    flowProgressIndex = -1;
+    seenFlowEvents.clear();
+    flowEvents.replaceChildren();
+    flowEventsEmpty.hidden = false;
+    flowOrderDetails.hidden = true;
+    resultPanel.hidden = true;
+    flowRuntimeStatus.textContent = "Chọn user rồi tạo order để theo dõi luồng CDC riêng.";
+    renderFlowSteps();
+    connectNotificationStream();
+    connectFlowStream();
+});
+
 if (pendingOrderAttempt) {
     showResult({
         state: "pending",
@@ -333,3 +550,4 @@ if (pendingOrderAttempt) {
 }
 
 connectNotificationStream();
+connectFlowStream();

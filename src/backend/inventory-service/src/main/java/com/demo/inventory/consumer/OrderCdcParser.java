@@ -20,6 +20,7 @@ public class OrderCdcParser {
         Map<?, ?> value = readObject(record.value(), "CDC value");
         String keyId = requiredText(key.get("id"), "Kafka key id");
         String orderId = requiredText(value.get("id"), "CDC value id");
+        String customerId = customerId(value.get("customer_id"));
         String sku = requiredText(value.get("sku"), "CDC value sku");
         int quantity = requiredQuantity(value.get("quantity"));
 
@@ -33,7 +34,7 @@ public class OrderCdcParser {
             throw new InvalidCdcRecordException("SKU exceeds 50 characters");
         }
 
-        return new OrderCdcEvent(orderId, sku, quantity);
+        return new OrderCdcEvent(orderId, customerId, sku, quantity);
     }
 
     private Map<?, ?> readObject(byte[] json, String field) {
@@ -58,6 +59,17 @@ public class OrderCdcParser {
             throw new InvalidCdcRecordException(field + " is missing or invalid");
         }
         return text.strip();
+    }
+
+    private String customerId(Object value) {
+        if (value == null) {
+            return "USER_A";
+        }
+        String customerId = requiredText(value, "CDC value customer_id");
+        if (!"USER_A".equals(customerId) && !"USER_B".equals(customerId)) {
+            throw new InvalidCdcRecordException("CDC value customer_id must be USER_A or USER_B");
+        }
+        return customerId;
     }
 
     private int requiredQuantity(Object value) {

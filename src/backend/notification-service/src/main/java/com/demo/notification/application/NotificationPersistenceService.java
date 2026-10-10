@@ -19,7 +19,7 @@ public class NotificationPersistenceService {
     @Transactional
     public NotificationResponse persist(ReservationCdcEvent event,
                                         String topic, int partition, long offset) {
-        repository.insertIfAbsent(event.orderId(), event.sku(), event.quantity(),
+        repository.insertIfAbsent(event.orderId(), event.customerId(), event.sku(), event.quantity(),
                 event.status(), event.reason(), topic, partition, offset);
         NotificationResponse stored = repository.findByOrderId(event.orderId())
                 .orElseThrow(() -> new IllegalStateException("Notification was not stored"));
@@ -38,6 +38,7 @@ public class NotificationPersistenceService {
 
     private boolean matches(NotificationResponse notification, ReservationCdcEvent event) {
         return notification.sku().equals(event.sku())
+                && notification.customerId().equals(event.customerId())
                 && notification.quantity() == event.quantity()
                 && notification.status().equals(event.status())
                 && java.util.Objects.equals(notification.reason(), event.reason());

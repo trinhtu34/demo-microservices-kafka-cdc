@@ -3,6 +3,7 @@ USE notification_db;
 CREATE TABLE IF NOT EXISTS notifications (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     order_id VARCHAR(36) NOT NULL,
+    customer_id VARCHAR(16) NOT NULL DEFAULT 'USER_A',
     sku VARCHAR(50) NOT NULL,
     quantity INT NOT NULL CHECK (quantity > 0),
     status VARCHAR(20) NOT NULL CHECK (status IN ('RESERVED', 'REJECTED')),
@@ -12,6 +13,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     source_offset BIGINT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_notifications_order_id (order_id),
+    KEY idx_notifications_customer_id_id (customer_id, id),
     KEY idx_notifications_source (source_topic, source_partition, source_offset)
 ) ENGINE=InnoDB;
 

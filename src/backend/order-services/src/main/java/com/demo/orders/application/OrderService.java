@@ -14,15 +14,15 @@ public class OrderService {
     }
 
     @Transactional
-    public OrderCreationResult createOrder(String requestId, String sku, int quantity) {
-        int inserted = orderRepository.insertIfAbsent(requestId, sku, quantity);
+    public OrderCreationResult createOrder(String requestId, String customerId, String sku, int quantity) {
+        int inserted = orderRepository.insertIfAbsent(requestId, customerId, sku, quantity);
         if (inserted == 1) {
             return new OrderCreationResult(requestId, true);
         }
 
         var existingOrder = orderRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalStateException("Order idempotency record was not found"));
-        if (!existingOrder.matches(sku, quantity)) {
+        if (!existingOrder.matches(customerId, sku, quantity)) {
             throw new OrderIdempotencyConflictException(
                     "Idempotency-Key was already used with a different order payload");
         }

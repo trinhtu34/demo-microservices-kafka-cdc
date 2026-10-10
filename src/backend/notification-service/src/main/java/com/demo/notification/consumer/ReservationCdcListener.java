@@ -1,9 +1,12 @@
 package com.demo.notification.consumer;
 
 import com.demo.notification.api.NotificationResponse;
+import com.demo.notification.api.FlowProgressEvent;
 import com.demo.notification.application.NotificationPersistenceService;
+import com.demo.notification.stream.FlowProgressStream;
 import com.demo.notification.stream.NotificationStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.Header;
 import org.slf4j.Logger;
@@ -20,13 +23,16 @@ public class ReservationCdcListener {
     private final ReservationCdcParser parser;
     private final NotificationPersistenceService persistenceService;
     private final NotificationStream notificationStream;
+    private final FlowProgressStream flowProgressStream;
 
     public ReservationCdcListener(ReservationCdcParser parser,
                                   NotificationPersistenceService persistenceService,
-                                  NotificationStream notificationStream) {
+                                  NotificationStream notificationStream,
+                                  FlowProgressStream flowProgressStream) {
         this.parser = parser;
         this.persistenceService = persistenceService;
         this.notificationStream = notificationStream;
+        this.flowProgressStream = flowProgressStream;
     }
 
     @KafkaListener(topics = "${demo.kafka.inventory-topic}")
@@ -38,6 +44,14 @@ public class ReservationCdcListener {
             try {
                 ReservationCdcEvent event = parser.parse(record);
                 if (event.isFinal()) {
+                    flowProgressStream.publish(new FlowProgressEvent(
+                            event.customerId(),
+                            event.orderId(),
+                            "RESERVATION_CDC_CAPTURED",
+                            record.topic(),
+                            record.partition(),
+                            record.offset(),
+                            Instant.now()));
                     NotificationResponse notification = persistenceService.persist(
                             event, record.topic(), record.partition(), record.offset());
                     notificationStream.publish(notification);

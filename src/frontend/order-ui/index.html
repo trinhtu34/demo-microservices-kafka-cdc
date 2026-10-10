@@ -32,31 +32,49 @@
 
         <section class="flow" aria-label="Luồng CDC của một order">
             <ol class="flow__list">
-                <li class="flow__step">
+                <li class="flow__step" data-flow-step="order" data-state="idle">
                     <span class="flow__number">01</span>
-                    <div><strong>Order Service</strong><code>POST /api/orders</code></div>
+                    <div><strong>Order Service</strong><code>POST /api/orders</code><span class="flow__step-status">Chưa bắt đầu</span></div>
                 </li>
-                <li class="flow__step">
+                <li class="flow__step" data-flow-step="order-database" data-state="idle">
                     <span class="flow__number">02</span>
-                    <div><strong>MariaDB</strong><code>order_db · binlog</code></div>
+                    <div><strong>MariaDB</strong><code>order_db · binlog</code><span class="flow__step-status">Chưa bắt đầu</span></div>
                 </li>
-                <li class="flow__step">
+                <li class="flow__step" data-flow-step="order-cdc" data-state="idle">
                     <span class="flow__number">03</span>
-                    <div><strong>Debezium</strong><code>order CDC topic</code></div>
+                    <div><strong>Debezium → Kafka</strong><code>order_cdc.order_db.orders</code><span class="flow__step-status">Chưa bắt đầu</span></div>
                 </li>
-                <li class="flow__step">
+                <li class="flow__step" data-flow-step="inventory" data-state="idle">
                     <span class="flow__number">04</span>
-                    <div><strong>Inventory</strong><code>reserve + inventory DB</code></div>
+                    <div><strong>Inventory Service</strong><code>group inventory-service</code><code>reserve + inventory_db</code><span class="flow__step-status">Chưa bắt đầu</span></div>
                 </li>
-                <li class="flow__step">
+                <li class="flow__step" data-flow-step="reservation-cdc" data-state="idle">
                     <span class="flow__number">05</span>
-                    <div><strong>Debezium</strong><code>reservation CDC topic</code></div>
+                    <div><strong>Debezium → Kafka</strong><code>inventory_cdc.inventory_db.reservations</code><span class="flow__step-status">Chưa bắt đầu</span></div>
                 </li>
-                <li class="flow__step flow__step--last">
+                <li class="flow__step flow__step--last" data-flow-step="notification" data-state="idle">
                     <span class="flow__number">06</span>
-                    <div><strong>Notification</strong><code>DB + SSE tới UI</code></div>
+                    <div><strong>Notification → UI</strong><code>group notification-service</code><code>notification_db · SSE</code><span class="flow__step-status">Chưa bắt đầu</span></div>
                 </li>
             </ol>
+            <div class="flow__monitor">
+                <div class="flow__monitor-heading">
+                    <div>
+                        <p class="flow__monitor-eyebrow">LIVE ORDER TRACE</p>
+                        <p id="flow-runtime-status" class="flow__runtime-status" role="status" aria-live="polite">Tạo order để theo dõi dữ liệu đi qua từng chặng.</p>
+                        <div id="flow-order-details" class="flow__order-details" hidden>
+                            <span>ORDER ID</span><code id="flow-order-id"></code>
+                        </div>
+                    </div>
+                    <div id="flow-connection" class="notification-connection" data-state="connecting" role="status" aria-live="polite">
+                        <span class="notification-connection__dot" aria-hidden="true"></span>
+                        <span id="flow-connection-label">Đang kết nối flow stream…</span>
+                    </div>
+                </div>
+                <p class="flow__monitor-note">Flow observer dùng consumer group <code>notification-flow-observer</code> để quan sát topic; Inventory vẫn nhận order bằng group riêng của nó.</p>
+                <ol id="flow-events" class="flow__events" aria-label="Các mốc dữ liệu đã quan sát"></ol>
+                <p id="flow-events-empty" class="flow__events-empty">Chi tiết topic, partition và offset sẽ xuất hiện khi các CDC event được quan sát.</p>
+            </div>
         </section>
 
         <section class="workspace" aria-label="Tạo order và thông tin luồng CDC">
@@ -71,6 +89,15 @@
                 <p class="form-intro">Gửi request kèm Idempotency-Key để retry an toàn. Mã order được tạo sau database commit.</p>
 
                 <form id="order-form" class="order-form">
+                    <div class="field field--customer">
+                        <label for="customer-id">Người đặt (demo)</label>
+                        <select id="customer-id" name="customerId" aria-describedby="customer-id-hint" required>
+                            <option value="USER_A">User A</option>
+                            <option value="USER_B">User B</option>
+                        </select>
+                        <p id="customer-id-hint" class="field-hint">Chọn hai user khác nhau để xem lịch sử riêng.</p>
+                    </div>
+
                     <div class="field">
                         <label for="sku">SKU</label>
                         <input

@@ -42,7 +42,8 @@ input {
 
 button:focus-visible,
 a:focus-visible,
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
     outline: 3px solid #e9a48c;
     outline-offset: 3px;
 }
@@ -234,6 +235,141 @@ h1 span {
     overflow-wrap: anywhere;
 }
 
+.flow__step {
+    transition: background-color 160ms ease;
+}
+
+.flow__step[data-state="active"] {
+    background: #fff8f4;
+}
+
+.flow__step[data-state="error"] {
+    background: var(--danger-wash);
+}
+
+.flow__step[data-state="complete"] .flow__number,
+.flow__step[data-state="complete"] .flow__step-status {
+    color: var(--green);
+}
+
+.flow__step[data-state="active"] .flow__number,
+.flow__step[data-state="active"] .flow__step-status {
+    color: var(--accent-dark);
+}
+
+.flow__step[data-state="error"] .flow__number,
+.flow__step[data-state="error"] .flow__step-status {
+    color: var(--danger);
+}
+
+.flow__step-status {
+    display: block;
+    margin-top: 0.35rem;
+    color: var(--quiet);
+    font-size: 0.64rem;
+    line-height: 1.35;
+}
+
+.flow__monitor {
+    padding: 0.9rem 0 1.1rem;
+    border-top: 1px solid var(--line);
+}
+
+.flow__monitor-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.flow__monitor-eyebrow,
+.flow__order-details > span {
+    margin: 0 0 0.25rem;
+    color: var(--quiet);
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+}
+
+.flow__runtime-status {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.76rem;
+}
+
+.flow__monitor-note {
+    margin: 0.45rem 0 0;
+    color: var(--quiet);
+    font-size: 0.66rem;
+}
+
+.flow__monitor-note code {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    overflow-wrap: anywhere;
+}
+
+.flow__order-details {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-top: 0.35rem;
+}
+
+.flow__order-details > span {
+    margin: 0;
+}
+
+.flow__order-details code {
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    overflow-wrap: anywhere;
+}
+
+.flow__events {
+    display: grid;
+    gap: 0.45rem;
+    max-height: 10rem;
+    overflow: auto;
+    margin: 0.75rem 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.flow__event {
+    display: grid;
+    grid-template-columns: minmax(7.5rem, 0.45fr) minmax(0, 1fr);
+    gap: 0.65rem;
+    padding: 0.55rem 0.65rem;
+    border-left: 2px solid #9eb7a6;
+    background: rgba(255, 255, 255, 0.62);
+    font-size: 0.68rem;
+}
+
+.flow__event-title {
+    margin: 0;
+    color: var(--ink);
+    font-weight: 650;
+}
+
+.flow__event-detail {
+    margin: 0;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    overflow-wrap: anywhere;
+}
+
+.flow__events-empty {
+    margin: 0.75rem 0 0;
+    color: var(--quiet);
+    font-size: 0.68rem;
+}
+
 .workspace {
     display: grid;
     grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.85fr);
@@ -310,7 +446,8 @@ h1 span {
     font-weight: 650;
 }
 
-.field input {
+.field input,
+.field select {
     width: 100%;
     min-height: 2.9rem;
     padding: 0.65rem 0.75rem;
@@ -318,6 +455,10 @@ h1 span {
     border-radius: 0.35rem;
     background: #fff;
     color: var(--ink);
+}
+
+.field--customer {
+    grid-column: 1 / -1;
 }
 
 .field input::placeholder {
@@ -725,6 +866,15 @@ h1 span {
 
     .flow__step code {
         font-size: 0.62rem;
+    }
+
+    .flow__monitor-heading {
+        flex-direction: column;
+    }
+
+    .flow__event {
+        grid-template-columns: 1fr;
+        gap: 0.2rem;
     }
 
     .order-form {

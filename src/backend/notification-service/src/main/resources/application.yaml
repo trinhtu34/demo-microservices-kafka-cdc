@@ -25,7 +25,9 @@ server:
 
 demo:
   kafka:
+    order-topic: ${DEMO_KAFKA_ORDER_TOPIC:order_cdc.order_db.orders}
     inventory-topic: ${DEMO_KAFKA_INVENTORY_TOPIC:inventory_cdc.inventory_db.reservations}
+    flow-observer-group: ${DEMO_KAFKA_FLOW_OBSERVER_GROUP:notification-flow-observer}
 
 logging:
   level:
