@@ -41,7 +41,7 @@ Browser ── POST /api/orders ──► Order Service
   └──────────── SSE /api/flow/stream ◄┘
 ```
 
-- `order-service`: `POST /api/orders`, phục vụ UI; host port được Docker Compose cấp động để có thể chạy nhiều replica.
+- `order-service`: `POST /api/orders`, phục vụ UI (frontend); host port cố định ở `8080` (`0.0.0.0:8080:8080`) giúp truy cập trực tiếp tại `http://localhost:8080`.
 - The UI offers demo identities `USER_A` and `USER_B`; `customer_id` is saved with the order and propagated through reservation/notification CDC so each UI filters its own history. This is a demo identity only, without authentication. The Kafka key remains the order primary key `id`.
 - `inventory-service`: consumer của `order_cdc.order_db.orders`, chạy với consumer group `inventory-service`.
 - `notification-service`: consumes `inventory_cdc.inventory_db.reservations`; exposes `GET /api/notifications?customerId=USER_A`, `GET /api/notifications/stream?customerId=USER_A`, and `GET /api/flow/stream?customerId=USER_A`.
@@ -51,7 +51,7 @@ Browser ── POST /api/orders ──► Order Service
 - Mỗi service chỉ ghi vào database của nó. Inventory DB và Order DB là hai MariaDB instance riêng; Notification DB là instance thứ ba.
 - Kafka chạy một broker, order CDC topic có 3 partition để thử tối đa 3 Inventory consumer cùng lúc; replication factor vẫn là 1. Reservation CDC topic giữ 1 partition vì Notification hiện có một consumer.
 - Order Service replicas cùng ghi vào Order DB; Debezium MariaDB connector vẫn là một task đọc binlog. Nhiều Order Service pod không đồng nghĩa có nhiều Kafka producer task.
-- Order Service publishes container port 8080 on `0.0.0.0` with a dynamic host port for Tailnet access; Inventory Service remains on loopback. Notification Service publishes `8090` on `0.0.0.0` so remote UI clients can receive flow and notification SSE. Use `docker compose port --index <n> order-service 8080` to find each replica.
+- Order Service publishes container port 8080 on `0.0.0.0:8080` (cố định host port `8080` để truy cập UI dễ dàng tại `http://localhost:8080`); Inventory Service remains on loopback. Notification Service publishes `8090` on `0.0.0.0:8090` so remote UI clients can receive flow and notification SSE. (Trường hợp scale nhiều replica của order-service, có thể dùng `docker compose port --index <n> order-service 8080` khi cấu hình dynamic port).
 
 ## Xử lý dữ liệu
 
@@ -89,18 +89,19 @@ docker compose -f infra/docker-compose.yaml up -d --build
 docker compose -f infra/docker-compose.yaml ps
 ```
 
-Chạy nhiều Order Service và Inventory consumer cho bài tập scale:
+Mở UI trực tiếp tại: **`http://localhost:8080`** (hoặc IP máy chủ/Tailnet).
+
+Chạy nhiều Inventory consumer cho bài tập scale (chia partition Kafka):
 
 ```powershell
-docker compose -f infra/docker-compose.yaml up -d --scale order-service=2 --scale inventory-service=3
+docker compose -f infra/docker-compose.yaml up -d --scale inventory-service=3
 docker compose -f infra/docker-compose.yaml ps
-docker compose -f infra/docker-compose.yaml port --index 1 order-service 8080
-docker compose -f infra/docker-compose.yaml port --index 2 order-service 8080
 docker compose -f infra/docker-compose.yaml exec -T kafka kafka-consumer-groups --bootstrap-server kafka:9092 --describe --group inventory-service --members --verbose
 ```
 
-Mở UI qua một trong các host port được Docker hiển thị. Gửi request tới từng Order Service port để quan sát các replica cùng ghi vào DB và Debezium phát event; ba Inventory consumer dùng chung group và chia nhau ba partition. Giao diện nhận milestone từ hai luồng SSE: order CDC được flow observer quan sát, còn kết quả cuối chỉ xuất hiện sau khi Notification lưu DB.
-Tailnet access: run `tailscale ip -4` on the Docker host, then open the two Order Service replica URLs in separate tabs. Select `User A` in one tab and `User B` in the other to get separate notification and flow views while both use the shared inventory.
+> **Lưu ý khi scale order-service**: Mặc định `order-service` gắn cố định port `8080:8080` để người dùng truy cập UI dễ dàng. Nếu muốn scale nhiều replica của `order-service` (`--scale order-service=2`), hãy đổi port `order-service` sang dynamic port (ví dụ: `0.0.0.0::8080`) trong `docker-compose.yaml` để tránh xung đột port, sau đó kiểm tra port qua `docker compose -f infra/docker-compose.yaml port --index <n> order-service 8080`.
+
+Tailnet access: run `tailscale ip -4` on the Docker host, sau đó mở URL `http://<tailscale-ip>:8080`. Có thể mở hai tab (một tab chọn `User A`, một tab chọn `User B`) để theo dõi notification và luồng CDC riêng biệt nhưng dùng chung inventory.
 
 ```powershell
 docker compose -f infra/docker-compose.yaml logs -f inventory-service notification-service debezium-connect
@@ -111,8 +112,7 @@ Gọi API trực tiếp cần giữ nguyên key và body khi retry cùng một o
 ```powershell
 $idempotencyKey = [guid]::NewGuid().ToString()
 $orderBody = '{"customerId":"USER_A","sku":"IPHONE-15","quantity":1}'
-$orderPort = (docker compose -f infra/docker-compose.yaml port --index 1 order-service 8080).Split(':')[-1]
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:$orderPort/api/orders" `
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8080/api/orders" `
   -Headers @{ 'Idempotency-Key' = $idempotencyKey } `
   -ContentType 'application/json' -Body $orderBody
 ```
